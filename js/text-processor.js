@@ -5,50 +5,85 @@
 
 // === TEXT STATISTICS ===
 class TextAnalyzer {
+    // Cache for syllable counts to improve performance
+    static syllableCache = new Map();
+
     static analyze(text) {
         if (!text || !text.trim()) {
             return this.getEmptyStats();
         }
 
+        // Single pass to extract basic stats
         const words = this.getWords(text);
         const sentences = this.getSentences(text);
         const paragraphs = this.getParagraphs(text);
         const characters = text.length;
-        const avgWordsPerSentence = words.length / Math.max(sentences.length, 1);
-        const avgSyllablesPerWord = this.calculateAvgSyllables(words);
-        const fleschScore = this.calculateFleschScore(avgWordsPerSentence, avgSyllablesPerWord);
-        
+        const wordCount = words.length;
+
+        // Only calculate complex metrics if text is substantial
+        let fleschScore = 0;
+        let gradeLevel = '—';
+
+        if (wordCount > 10 && sentences.length > 0) {
+            const avgWordsPerSentence = wordCount / sentences.length;
+            const avgSyllablesPerWord = this.calculateAvgSyllables(words);
+            fleschScore = this.calculateFleschScore(avgWordsPerSentence, avgSyllablesPerWord);
+            gradeLevel = this.getGradeLevel(fleschScore);
+        }
+
+        // Improved reading time calculation
+        const readingTime = this.calculateReadingTime(wordCount);
+
+        // Calculate additional metrics
+        const uniqueWords = new Set(words.map(w => w.toLowerCase())).size;
+        const avgWordLength = wordCount > 0
+            ? (words.reduce((sum, w) => sum + w.length, 0) / wordCount).toFixed(1)
+            : '—';
+
         return {
-            words: words.length,
+            words: wordCount,
+            uniqueWords,
             characters,
             sentences: sentences.length,
             paragraphs: paragraphs.length,
-            readingTime: Math.ceil(words.length / 200),
+            avgWordLength,
+            readingTime,
             fleschScore: Math.round(fleschScore),
-            gradeLevel: this.getGradeLevel(fleschScore),
-            keywords: this.extractKeywords(words)
+            gradeLevel,
+            keywords: wordCount > 20 ? this.extractKeywords(words) : []
         };
+    }
+
+    static calculateReadingTime(wordCount) {
+        if (wordCount === 0) return '0';
+        if (wordCount < 100) return '<1'; // Show "<1m" for very short text
+        return Math.ceil(wordCount / 200);
     }
 
     static getEmptyStats() {
         return {
-            words: 0, 
-            characters: 0, 
-            sentences: 0, 
+            words: 0,
+            uniqueWords: 0,
+            characters: 0,
+            sentences: 0,
             paragraphs: 0,
-            readingTime: 0, 
-            fleschScore: 0, 
-            gradeLevel: '—', 
+            avgWordLength: '—',
+            readingTime: 0,
+            fleschScore: 0,
+            gradeLevel: '—',
             keywords: []
         };
     }
 
     static getWords(text) {
-        return text.trim().split(/\s+/).filter(word => word.length > 0);
+        // Trim first, then split - no empty strings will be created
+        const trimmed = text.trim();
+        return trimmed ? trimmed.split(/\s+/) : [];
     }
 
     static getSentences(text) {
-        return text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        // Split on sentence endings, handling multiple punctuation and whitespace
+        return text.split(/[.!?]+\s+|[.!?]+$/).filter(s => s.trim().length > 0);
     }
 
     static getParagraphs(text) {
@@ -56,11 +91,43 @@ class TextAnalyzer {
     }
 
     static countSyllables(word) {
-        word = word.toLowerCase();
-        if (word.length <= 3) return 1;
-        word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
-        const matches = word.match(/[aeiouy]{1,2}/g);
-        return matches ? matches.length : 1;
+        if (!word || word.length === 0) return 0;
+
+        word = word.toLowerCase().trim();
+
+        // Check cache first
+        if (this.syllableCache.has(word)) {
+            return this.syllableCache.get(word);
+        }
+
+        let count;
+
+        // Handle numbers - count each digit as a syllable
+        if (/^\d+$/.test(word)) {
+            count = word.length;
+        } else if (word.length <= 3) {
+            // Handle very short words
+            count = 1;
+        } else {
+            // Remove common silent endings
+            const cleaned = word
+                .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '')
+                .replace(/^y/, '');
+
+            // Count vowel groups
+            const matches = cleaned.match(/[aeiouy]{1,2}/g);
+            count = Math.max(1, matches ? matches.length : 1);
+        }
+
+        // Cache the result (limit cache size to prevent memory bloat)
+        if (this.syllableCache.size > 1000) {
+            // Clear oldest entries when cache gets too large
+            const firstKey = this.syllableCache.keys().next().value;
+            this.syllableCache.delete(firstKey);
+        }
+        this.syllableCache.set(word, count);
+
+        return count;
     }
     
     static calculateAvgSyllables(words) {
@@ -69,10 +136,21 @@ class TextAnalyzer {
     }
 
     static calculateFleschScore(avgWords, avgSyllables) {
-        return 206.835 - (1.015 * avgWords) - (84.6 * avgSyllables);
+        // Prevent division by zero and invalid inputs
+        if (avgWords === 0 || avgSyllables === 0 || isNaN(avgWords) || isNaN(avgSyllables)) {
+            return 0;
+        }
+
+        const score = 206.835 - (1.015 * avgWords) - (84.6 * avgSyllables);
+
+        // Clamp score between 0 and 100 for valid range
+        return Math.max(0, Math.min(100, score));
     }
 
     static getGradeLevel(score) {
+        // Handle edge cases
+        if (score <= 0 || isNaN(score)) return '—';
+        if (score >= 100) return 'Pre-school';
         if (score >= 90) return '5th Grade';
         if (score >= 80) return '6th Grade';
         if (score >= 70) return '7th Grade';
@@ -82,27 +160,41 @@ class TextAnalyzer {
         return 'Graduate';
     }
 
-    static extractKeywords(words) {
+    static extractKeywords(words, count = 7, minFrequency = 2) {
+        // Expanded and more comprehensive stopwords list
         const stopWords = new Set([
-            'the', 'and', 'to', 'of', 'a', 'in', 'for', 'is', 'on', 'that', 'by', 'this', 'with', 
+            'the', 'and', 'to', 'of', 'a', 'in', 'for', 'is', 'on', 'that', 'by', 'this', 'with',
             'i', 'you', 'it', 'not', 'or', 'be', 'are', 'from', 'at', 'as', 'your', 'all', 'any',
             'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his',
             'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its',
-            'let', 'put', 'say', 'she', 'too', 'use'
+            'let', 'put', 'say', 'she', 'too', 'use', 'have', 'been', 'other', 'were', 'which',
+            'their', 'what', 'there', 'when', 'will', 'would', 'about', 'into', 'than', 'them',
+            'these', 'some', 'could', 'only', 'may', 'then', 'such', 'an', 'but', 'we', 'he',
+            'me', 'my', 'so', 'up', 'if', 'no', 'do', 'just', 'they', 'very', 'more', 'even',
+            'also', 'well', 'back', 'after', 'should', 'each', 'where', 'those', 'much', 'own',
+            'most', 'through', 'being', 'over', 'here', 'both', 'while', 'under', 'same', 'us'
         ]);
-        
+
         const wordCount = {};
         words.forEach(word => {
-            const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
-            if (cleanWord.length > 2 && !stopWords.has(cleanWord)) {
+            const cleanWord = word.toLowerCase()
+                .replace(/[^\w]/g, '') // Remove punctuation
+                .replace(/^\d+$/, ''); // Remove pure numbers
+
+            // Only count words that are:
+            // - Longer than 2 characters
+            // - Not in stopwords list
+            // - Not empty after cleaning
+            if (cleanWord.length > 2 && !stopWords.has(cleanWord) && cleanWord) {
                 wordCount[cleanWord] = (wordCount[cleanWord] || 0) + 1;
             }
         });
-        
+
         return Object.entries(wordCount)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 7)
-            .map(([word]) => word);
+            .filter(([_, freq]) => freq >= minFrequency) // Filter by minimum frequency
+            .sort((a, b) => b[1] - a[1]) // Sort by frequency (highest first)
+            .slice(0, count) // Take top N keywords
+            .map(([word]) => word); // Return just the words
     }
 }
 
@@ -270,6 +362,152 @@ class LoremGenerator {
             paragraphs.push(this.generateSentences(sentenceCount, lib));
         }
         return paragraphs.join('\n\n');
+    }
+}
+
+// === FORMATTING EXTRACTION ===
+class FormattingExtractor {
+    /**
+     * Extracts formatting metadata from HTML content
+     * @param {string} html - The HTML content to analyze
+     * @returns {Object} Formatting metadata including fonts, sizes, colors, etc.
+     */
+    static extractFormatting(html) {
+        if (!html || !html.includes('<')) {
+            return null; // No HTML content
+        }
+
+        try {
+            // Create isolated element for safe parsing (not attached to DOM)
+            const tempDiv = document.createElement('div');
+
+            // Sanitize: remove script tags before parsing
+            const sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+            tempDiv.innerHTML = sanitized;
+
+            const formatting = {
+                fonts: new Set(),
+                sizes: new Set(),
+                weights: new Set(),
+                colors: new Set(),
+                styles: new Set(),
+                elements: new Set()
+            };
+
+            // Walk through all elements and extract inline styles
+            const elements = tempDiv.querySelectorAll('*');
+            elements.forEach(el => {
+                // Track element types
+                formatting.elements.add(el.tagName.toLowerCase());
+
+                // Extract inline styles
+                if (el.style.fontFamily) {
+                    formatting.fonts.add(el.style.fontFamily.replace(/['"]/g, ''));
+                }
+                if (el.style.fontSize) {
+                    formatting.sizes.add(el.style.fontSize);
+                }
+                if (el.style.fontWeight) {
+                    formatting.weights.add(el.style.fontWeight);
+                }
+                if (el.style.color) {
+                    formatting.colors.add(el.style.color);
+                }
+
+                // Detect formatting from tags
+                const tag = el.tagName.toLowerCase();
+                if (['b', 'strong'].includes(tag)) formatting.styles.add('Bold');
+                if (['i', 'em'].includes(tag)) formatting.styles.add('Italic');
+                if (tag === 'u') formatting.styles.add('Underline');
+                if (tag === 'strike' || tag === 's') formatting.styles.add('Strikethrough');
+                if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                    formatting.styles.add('Heading');
+                }
+
+                // Extract font attributes
+                if (el.hasAttribute('face')) {
+                    formatting.fonts.add(el.getAttribute('face'));
+                }
+                if (el.hasAttribute('size')) {
+                    formatting.sizes.add(el.getAttribute('size'));
+                }
+                if (el.hasAttribute('color')) {
+                    formatting.colors.add(el.getAttribute('color'));
+                }
+            });
+
+            // Convert sets to sorted arrays and clean up
+            return {
+                fonts: Array.from(formatting.fonts).filter(f => f).slice(0, 5),
+                sizes: Array.from(formatting.sizes).filter(s => s).slice(0, 5),
+                weights: Array.from(formatting.weights).filter(w => w && w !== '400').slice(0, 5),
+                colors: Array.from(formatting.colors).filter(c => c).slice(0, 8),
+                styles: Array.from(formatting.styles).filter(s => s),
+                elements: Array.from(formatting.elements).filter(e => !['div', 'span', 'font'].includes(e)).slice(0, 8),
+                hasFormatting: formatting.fonts.size > 0 || formatting.sizes.size > 0 ||
+                               formatting.styles.size > 0 || formatting.colors.size > 0
+            };
+        } catch (error) {
+            console.error('Error extracting formatting:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Formats the extracted metadata for display
+     * @param {Object} formatting - The formatting metadata object
+     * @returns {Object} Formatted display data
+     */
+    static formatForDisplay(formatting) {
+        if (!formatting || !formatting.hasFormatting) {
+            return null;
+        }
+
+        const display = [];
+
+        if (formatting.fonts.length > 0) {
+            display.push({
+                label: 'Fonts',
+                values: formatting.fonts
+            });
+        }
+
+        if (formatting.sizes.length > 0) {
+            display.push({
+                label: 'Sizes',
+                values: formatting.sizes
+            });
+        }
+
+        if (formatting.weights.length > 0) {
+            display.push({
+                label: 'Weights',
+                values: formatting.weights
+            });
+        }
+
+        if (formatting.colors.length > 0) {
+            display.push({
+                label: 'Colors',
+                values: formatting.colors
+            });
+        }
+
+        if (formatting.styles.length > 0) {
+            display.push({
+                label: 'Styles',
+                values: formatting.styles
+            });
+        }
+
+        if (formatting.elements.length > 0) {
+            display.push({
+                label: 'Elements',
+                values: formatting.elements
+            });
+        }
+
+        return display;
     }
 }
 
