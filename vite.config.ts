@@ -5,6 +5,7 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  base: '/Texty-3.0/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
