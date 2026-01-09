@@ -70,14 +70,13 @@ export class TextHighlighter {
       }
     }
 
-    // Detect critical keywords
+    // Detect critical keywords (optimized: pre-compile regex patterns)
     if (keywordDensity) {
       const criticalKeywords = keywordDensity
         .filter(kw => kw.status === 'critical')
-        .map(kw => kw.word.toLowerCase())
+        .map(kw => new RegExp(`\\b${kw.word.toLowerCase()}\\b`, 'gi'))
 
-      criticalKeywords.forEach(keyword => {
-        const pattern = new RegExp(`\\b${keyword}\\b`, 'gi')
+      criticalKeywords.forEach(pattern => {
         const matches = text.matchAll(pattern)
         for (const match of matches) {
           if (match.index !== undefined) {

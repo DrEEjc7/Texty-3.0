@@ -1,3 +1,5 @@
+import DOMPurify from 'isomorphic-dompurify'
+
 export class TextFormatter {
   static stripFormatting(text: string): string {
     if (!text) return ''
@@ -17,10 +19,12 @@ export class TextFormatter {
       .replace(/<\/div>/gi, '\n')
       .replace(/<\/h[1-6]>/gi, '\n')
 
+    // Sanitize HTML to prevent XSS
+    const sanitizedHTML = DOMPurify.sanitize(text, { ALLOWED_TAGS: [] })
     const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = text
+    tempDiv.textContent = sanitizedHTML
 
-    let cleanText = tempDiv.textContent || tempDiv.innerText || ''
+    let cleanText = tempDiv.textContent || ''
 
     cleanText = cleanText
       .replace(/[ \t]+/g, ' ')

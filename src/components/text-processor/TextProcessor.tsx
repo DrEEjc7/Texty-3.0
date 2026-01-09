@@ -22,18 +22,45 @@ export function TextProcessor({ onToast }: TextProcessorProps) {
   const [showHighlights, setShowHighlights] = useState(false)
 
   const handleStripFormatting = () => {
-    setText(TextFormatter.stripFormatting(text))
-    onToast('Formatting stripped')
+    if (!text) {
+      onToast('No text to format')
+      return
+    }
+    try {
+      setText(TextFormatter.stripFormatting(text))
+      onToast('Formatting stripped')
+    } catch (error) {
+      onToast('Failed to strip formatting')
+      console.error('Strip formatting error:', error)
+    }
   }
 
   const handleAutoFormat = () => {
-    setText(TextFormatter.autoFormat(text))
-    onToast('Text auto-formatted')
+    if (!text) {
+      onToast('No text to format')
+      return
+    }
+    try {
+      setText(TextFormatter.autoFormat(text))
+      onToast('Text auto-formatted')
+    } catch (error) {
+      onToast('Failed to auto-format text')
+      console.error('Auto format error:', error)
+    }
   }
 
   const handleCaseConvert = (caseType: 'upper' | 'lower' | 'title' | 'sentence') => {
-    setText(CaseConverter.convert(text, caseType))
-    onToast(`Converted to ${caseType} case`)
+    if (!text) {
+      onToast('No text to convert')
+      return
+    }
+    try {
+      setText(CaseConverter.convert(text, caseType))
+      onToast(`Converted to ${caseType} case`)
+    } catch (error) {
+      onToast('Failed to convert case')
+      console.error('Case convert error:', error)
+    }
   }
 
   const handleCopy = async () => {
@@ -44,8 +71,9 @@ export function TextProcessor({ onToast }: TextProcessorProps) {
     try {
       await copyToClipboard(text)
       onToast('Text copied to clipboard')
-    } catch {
-      onToast('Failed to copy')
+    } catch (error) {
+      onToast('Failed to copy to clipboard')
+      console.error('Copy error:', error)
     }
   }
 
@@ -62,8 +90,9 @@ export function TextProcessor({ onToast }: TextProcessorProps) {
     try {
       exportAsText(text)
       onToast('Text exported successfully')
-    } catch {
-      onToast('Export failed. Please try again.')
+    } catch (error) {
+      onToast('Failed to export text')
+      console.error('Export error:', error)
     }
   }
 
@@ -103,25 +132,27 @@ export function TextProcessor({ onToast }: TextProcessorProps) {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6 pb-6 border-b border-[var(--color-border)]">
-        <Button onClick={handleStripFormatting}>Strip Formatting</Button>
-        <Button onClick={handleAutoFormat}>Auto Format</Button>
+      <div className="flex flex-wrap gap-2 mb-6 pb-6 border-[var(--color-border)]" role="toolbar" aria-label="Text formatting tools">
+        <Button onClick={handleStripFormatting} aria-label="Remove all formatting from text">Strip Formatting</Button>
+        <Button onClick={handleAutoFormat} aria-label="Auto-format text with proper spacing and capitalization">Auto Format</Button>
         <Button
           variant={showHighlights ? "primary" : "outline"}
           onClick={() => setShowHighlights(!showHighlights)}
+          aria-label={showHighlights ? "Hide writing suggestions" : "Show writing suggestions"}
+          aria-pressed={showHighlights}
         >
           {showHighlights ? 'Hide' : 'Show'} Highlights
         </Button>
-        <Button variant="case" onClick={() => handleCaseConvert('sentence')}>
+        <Button variant="case" onClick={() => handleCaseConvert('sentence')} aria-label="Convert to sentence case">
           Sentence case
         </Button>
-        <Button variant="case" onClick={() => handleCaseConvert('lower')}>
+        <Button variant="case" onClick={() => handleCaseConvert('lower')} aria-label="Convert to lowercase">
           lower case
         </Button>
-        <Button variant="case" onClick={() => handleCaseConvert('upper')}>
+        <Button variant="case" onClick={() => handleCaseConvert('upper')} aria-label="Convert to uppercase">
           UPPER CASE
         </Button>
-        <Button variant="case" onClick={() => handleCaseConvert('title')}>
+        <Button variant="case" onClick={() => handleCaseConvert('title')} aria-label="Convert to title case">
           Title Case
         </Button>
       </div>
@@ -134,11 +165,11 @@ export function TextProcessor({ onToast }: TextProcessorProps) {
         showHighlights={showHighlights}
       />
 
-      <div className="flex gap-2 mt-6 flex-wrap">
-        <Button onClick={handleTrySample} variant="outline">Try Sample Text</Button>
-        <Button onClick={handleCopy}>Copy Text</Button>
-        <Button onClick={handleClear}>Clear Text</Button>
-        <Button onClick={handleExport}>Export as TXT</Button>
+      <div className="flex gap-2 mt-6 flex-wrap" role="group" aria-label="Text actions">
+        <Button onClick={handleTrySample} variant="outline" aria-label="Load sample text to try features">Try Sample Text</Button>
+        <Button onClick={handleCopy} aria-label="Copy text to clipboard">Copy Text</Button>
+        <Button onClick={handleClear} aria-label="Clear all text">Clear Text</Button>
+        <Button onClick={handleExport} aria-label="Export text as TXT file">Export as TXT</Button>
         <ExportMenu onToast={onToast} />
       </div>
 

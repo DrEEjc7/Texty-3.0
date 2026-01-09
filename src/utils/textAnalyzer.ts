@@ -1,5 +1,6 @@
 import type { TextStats, KeywordDensity, ReadabilityScores, WritingStyle } from '@/features/text/types'
 import { STOP_WORDS } from './stopWords'
+import { LRUCache } from './lruCache'
 
 // Compiled Regex Patterns
 const RE_SPLIT_WORDS = /\s+/
@@ -16,8 +17,7 @@ const RE_SYLLABLE_START_Y = /^y/
 const RE_VOWELS = /[aeiouy]{1,2}/g
 
 class TextAnalyzerUtil {
-  private syllableCache = new Map<string, number>()
-  private readonly CACHE_LIMIT = 2000 // Increased cache limit
+  private syllableCache = new LRUCache<string, number>(2000) // LRU cache with 2000 capacity
 
   analyze(text: string): TextStats {
     if (!text?.trim()) return this.getEmptyStats()
@@ -214,8 +214,12 @@ class TextAnalyzerUtil {
     if (!word) return 0
 
     const clean = word.toLowerCase().trim()
-    if (this.syllableCache.has(clean)) return this.syllableCache.get(clean)!
 
+    // Check cache first
+    const cached = this.syllableCache.get(clean)
+    if (cached !== undefined) return cached
+
+    // Calculate syllable count
     let count: number
     if (RE_DIGITS_ONLY.test(clean)) count = clean.length
     else if (clean.length <= 3) count = 1
@@ -225,11 +229,7 @@ class TextAnalyzerUtil {
       count = Math.max(1, matches ? matches.length : 1)
     }
 
-    if (this.syllableCache.size >= this.CACHE_LIMIT) {
-      const firstKey = this.syllableCache.keys().next().value
-      if (firstKey) this.syllableCache.delete(firstKey)
-    }
-
+    // LRU cache automatically handles eviction
     this.syllableCache.set(clean, count)
     return count
   }

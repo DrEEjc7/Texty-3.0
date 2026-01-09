@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { ThemeToggle } from './components/layout/ThemeToggle'
 import { Footer } from './components/layout/Footer'
 import { TextProcessor } from './components/text-processor/TextProcessor'
@@ -12,11 +11,6 @@ function App() {
 
   // Run text analysis whenever text changes
   useTextAnalysis()
-
-  // Debug: Log when app renders
-  useEffect(() => {
-    console.log('Texty 2.0 App mounted successfully')
-  }, [])
 
   return (
     <>
